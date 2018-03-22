@@ -85,11 +85,11 @@ sbpiper_sim <- function(model, inputdir, outputdir, outputfile_stats, outputfile
     plot_exp_dataset = FALSE
   }
   
-  print('generating a table of statistics')
-  gen_stats_table(inputdir, outputdir, model, outputfile_stats, xaxis_label, yaxis_label, column_to_read)
-  
-  print('summarising the time course repeats in tables')
+  print('summarising time course repeats in tables')
   summarise_data(inputdir, model, outputfile_repeats, column_to_read)
+  
+  print('generating table of statistics')
+  gen_stats_table(outputfile_repeats, outputfile_stats, column_to_read)
   
   files <- list.files( path=inputdir, pattern=model )
   if(length(files) > 1) {
@@ -103,20 +103,18 @@ sbpiper_sim <- function(model, inputdir, outputdir, outputfile_stats, outputfile
 }
 
 
-#' Generate a table of statistics for each model readout.
+#' Summarise the model simulation repeats in a single file.
 #'
 #' @param inputdir the input directory containing the time course files
-#' @param outputdir the output directory
 #' @param model the model name
-#' @param outputfile the name of the file to store the statistics
-#' @param xaxis_label the label for the x axis (e.g. Time (min))
-#' @param yaxis_label the label for the y axis (e.g. Level (a.u.))
+#' @param outputfile the file to store the simulated repeats
 #' @param column_to_read the name of the column to process
 #' @examples
 #' data(insulin_receptor_1)
 #' data(insulin_receptor_2)
 #' data(insulin_receptor_3)
 #' dir.create(file.path("sim_datasets"))
+#' dir.create(file.path("sim_datasets_sum"))
 #' write.table(insulin_receptor_1, 
 #'             file=file.path("sim_datasets","insulin_receptor_1.csv"), 
 #'             row.names=FALSE)
@@ -126,99 +124,104 @@ sbpiper_sim <- function(model, inputdir, outputdir, outputfile_stats, outputfile
 #' write.table(insulin_receptor_3, 
 #'             file=file.path("sim_datasets","insulin_receptor_3.csv"), 
 #'             row.names=FALSE)
-#' gen_stats_table(inputdir="sim_datasets", 
-#'                 outputdir="sim_plots", 
-#'                 model="insulin_receptor",
-#'                 outputfile="insulin_receptor_IR_beta_pY1146_stats.csv", 
-#'                 xaxis_label="Time [m]", 
-#'                 yaxis_label="Level [a. u.]", 
-#'                 column_to_read="IR_beta_pY1146")
+#' summarise_data(inputdir="sim_datasets", 
+#'                model="insulin_receptor", 
+#'                outputfile=file.path("sim_datasets_sum", 
+#'                                     "insulin_receptor_IR_beta_pY1146.csv"), 
+#'                column_to_read="IR_beta_pY1146")
 #' @export
-gen_stats_table <- function(inputdir, outputdir, model, outputfile, xaxis_label="", yaxis_label="", column_to_read="X1") {
-  
-  theme_set(tc_theme(36)) #28
-  
-  # create the directory of output
-  if (!file.exists(outputdir)){ 
-    dir.create(outputdir) 
-  }
+summarise_data <- function(inputdir, model, outputfile, column_to_read='X1') {
   
   # collect all files in the directory
   files <- list.files( path=inputdir, pattern=model )
-  print(files)
+  # print(files)
   
   # Read the simulated time course data sets
-  timecourses <- data.table::fread(file.path(inputdir, files[1]), select=c('Time', column_to_read))
-  
-  column <- names (timecourses)
-  
-  column.names <- c ("Time")
-  timepoints <- timecourses$Time
+  timecourses <- data.table::fread(file.path(inputdir, files[1]), select=c('Time'))
   #print(timepoints)
   
-  time_length <- length(timepoints)
-
-  # statistical table (to export)
-  statistics <- matrix( nrow=time_length, ncol=(((length(column)-1)*13)+1) )
-  statistics[,1] <- timepoints
-  colidx <- 2
-  
-  # an empty colum that we need for creating a data.frame of length(timecourses$Time) rows
-  na <- c(rep(NA, length(timecourses$Time)))
-  
-  for(j in 1:length(column)) {
-    if(column[j] != "Time") {
-      #print(column[j])
-      
-      # Extract column[j] for each file.
-      dataset <- data.frame(na)
-      for(i in 1:length(files)) {
-        dataset <- data.frame(dataset, data.table::fread(file.path(inputdir,files[i]), select=c(column[j])))
-      }
-      # remove the first column (na)
-      dataset <- subset(dataset, select=-c(na))
-      
-      #print(dataset)
-      # structures
-      data <-list("mean"=c(),"sd"=c(),"var"=c(),"skew"=c(),"kurt"=c(),"ci95"=c(),
-                  "coeffvar"=c(),"min"=c(),"stquantile"=c(),"median"=c(),"rdquantile"=c(),"max"=c())
-      k <- 1
-      # for each computed timepoint
-      for( l in 1:length ( timecourses$Time ) ) {
-        
-        timepoint.values <- c ( )
-        
-        if ( k <= length( timepoints ) && as.character(timepoints[k]) == as.character(timecourses$Time[l]) ) {
-          # for each Sample
-          for(m in 1:length(files)) {
-            timepoint.values <- c(timepoint.values, dataset[l,m])  
-          }
-          timepoint <- compute_descriptive_statistics(timepoint.values, length(files))
-          # put data in lists
-          data$mean <- c ( data$mean, timepoint$mean )
-          data$sd <- c ( data$sd, timepoint$sd )
-          data$var <- c ( data$var, timepoint$var )
-          data$skew <- c ( data$skew, timepoint$skew )
-          data$kurt <- c ( data$kurt, timepoint$kurt )
-          data$ci95 <- c ( data$ci95, timepoint$ci95 )
-          data$coeffvar <- c ( data$coeffvar, timepoint$coeffvar )
-          data$min <- c ( data$min, timepoint$min )
-          data$stquantile <- c ( data$stquantile, timepoint$stquantile )
-          data$median <- c ( data$median, timepoint$median )
-          data$rdquantile <- c ( data$rdquantile, timepoint$rdquantile )
-          data$max <- c ( data$max, timepoint$max )
-          
-          #print(data)
-          k <- k + 1
-        }
-      }
-      column.names <- get_column_names_statistics(column.names, column[j])
-      statistics <- get_stats(statistics, data, colidx)
-      colidx <- colidx+13
+  # the repeats for this readout
+  collect.repeats <- function(mat) {
+    for(i in 1:length(files)) {
+      mat[,1+i] <- as.data.frame(data.table::fread(file.path(inputdir,files[i]), select=c(column_to_read)))[,1]
     }
+    return(mat)
   }
-  #print (statistics)
-  write.table(statistics, outputfile, sep="\t", col.names = column.names, row.names = FALSE) 
+  repeats <- matrix(data=NA, nrow=nrow(timecourses), ncol=1+length(files))
+  repeats[, 1] <- timecourses$Time
+  repeats <- as.data.frame(collect.repeats(repeats))
+  # print(repeats)
+  
+  names(repeats) <- c("Time", paste('X', seq(1, length(files), 1), sep=""))
+  write.table(repeats, file=outputfile, sep="\t", row.names=FALSE, quote=FALSE)
+}
+
+
+#' Generate a table of statistics for each model readout.
+#'
+#' @param inputfile the file to store the simulated repeats
+#' @param outputfile the file to store the statistics
+#' @param column_to_read the name of the column to process
+#' @examples
+#' data(insulin_receptor_1)
+#' data(insulin_receptor_2)
+#' data(insulin_receptor_3)
+#' dir.create(file.path("sim_datasets"))
+#' dir.create(file.path("sim_datasets_sum"))
+#' write.table(insulin_receptor_1, 
+#'             file=file.path("sim_datasets","insulin_receptor_1.csv"), 
+#'             row.names=FALSE)
+#' write.table(insulin_receptor_2, 
+#'             file=file.path("sim_datasets","insulin_receptor_2.csv"), 
+#'             row.names=FALSE)
+#' write.table(insulin_receptor_3, 
+#'             file=file.path("sim_datasets","insulin_receptor_3.csv"), 
+#'             row.names=FALSE)
+#' summarise_data(inputdir="sim_datasets", 
+#'                model="insulin_receptor", 
+#'                outputfile=file.path("sim_datasets_sum", 
+#'                                     "insulin_receptor_IR_beta_pY1146.csv"), 
+#'                column_to_read="IR_beta_pY1146")
+#' gen_stats_table(inputfile=file.path("sim_datasets_sum", 
+#'                                     "insulin_receptor_IR_beta_pY1146.csv"), 
+#'                 outputfile="insulin_receptor_IR_beta_pY1146_stats.csv", 
+#'                 column_to_read="IR_beta_pY1146")
+#' @export
+gen_stats_table <- function(inputfile, outputfile, column_to_read="X1") {
+  
+  # Read the summarised simulated time course data set
+  repeats <- data.table::fread(inputfile)
+  time.col <- repeats$Time
+  # equivalent to repeats[, Time :=  NULL] .
+  repeats <- as.matrix(data.table::set(repeats, j=c(1L), value=NULL))
+  
+  # the statistics
+  compute.stats <- function(mat) {
+    for(i in 1:nrow(mat)) {
+      timepoint.values <- repeats[i,]
+      mat[i,2] = mean(timepoint.values, na.rm = TRUE)
+      mat[i,3] = sd(timepoint.values, na.rm = TRUE)
+      mat[i,4] = var(timepoint.values, na.rm = TRUE)
+      mat[i,5] = skewness(timepoint.values, na.rm = TRUE)
+      mat[i,6] = kurtosis(timepoint.values, na.rm = TRUE)
+      mat[i,7] = qnorm(0.975)*mat[i,2]/sqrt(ncol(mat)) # quantile normal distribution (lot of samples)
+      mat[i,8] = mat[i,2] / mat[i,1]
+      mat[i,9] = min(timepoint.values, na.rm = TRUE)
+      mat[i,10] = quantile(timepoint.values, na.rm = TRUE)[2]  # Q1
+      mat[i,11] = median(timepoint.values, na.rm = TRUE)  # Q2 or quantile(timepoint.values)[3]
+      mat[i,12] = quantile(timepoint.values, na.rm = TRUE)[4]  # Q3
+      mat[i,13] = max(timepoint.values, na.rm = TRUE)
+    }
+    return(mat) 
+  }
+  statistics <- matrix(data=NA, nrow=nrow(repeats), ncol=13)
+  statistics[,1] <- time.col
+  statistics <- as.data.frame(compute.stats(statistics))
+  colnames(statistics) <- c ("Time", "Mean", "StdDev", "Variance", "Skewness", "Kurtosis", 
+                             "n-dist_CI95", "CoeffVar", "Minimum", "1stQuantile", 
+                             "Median", "3rdQuantile", "Maximum")  
+  # print(statistics)
+  write.table(statistics, outputfile, sep="\t", row.names = FALSE)
 }
 
 
@@ -267,56 +270,55 @@ plot_comb_sims <- function(inputdir, outputdir, model, exp_dataset, plot_exp_dat
   if (!file.exists(outputdir)){
     dir.create(outputdir)
   }
-  # collect all files in the directory
-  files <- list.files( path=inputdir, pattern=column_to_read )
-  #print(files)
+  
+  filein <- file.path(inputdir, paste0(model, "_", column_to_read, ".csv"))
+  fileout <- file.path(outputdir, gsub('.csv', '.pdf', basename(filein)))
+  # print(filein)
   
   df_exp_dataset <- load_exp_dataset(exp_dataset, plot_exp_dataset)
   
-  for(i in 1:length(files)) {
-    df <- data.table::fread( file.path(inputdir, files[i]))
-    readout <- gsub(paste(model, '_', sep=''), '', gsub('.csv', '', basename(files[i])))
-    template_filename <- file.path(outputdir, gsub('.csv', '.png', basename(files[i])))
-    
+  df <- data.table::fread( filein )
+  # print(df)
+
+  # mean
+  fileoutM <- gsub('.pdf', '_mean.pdf', fileout)
+  gM <- ggplot()
+  gM <- plot_combined_tc(df, gM, column_to_read, xaxis_label, yaxis_label, 'mean', yaxis.min=yaxis.min, yaxis.max=yaxis.max)
+  ggsave(fileoutM, dpi=300, width=8, height=6)#, bg = "transparent")
+  
+  # mean_sd
+  fileoutMSD <- gsub('.pdf', '_mean_sd.pdf', fileout)
+  gMSD <- ggplot()
+  gMSD <- plot_combined_tc(df, gMSD, column_to_read, xaxis_label, yaxis_label, 'mean_sd', yaxis.min=yaxis.min, yaxis.max=yaxis.max)
+  ggsave(fileoutMSD, dpi=300, width=8, height=6)#, bg = "transparent")
+  
+  # mean_sd_ci95
+  fileoutMSDCI <- gsub('.pdf', '_mean_sd_ci95.pdf', fileout)
+  gMSDCI <- ggplot()
+  gMSDCI <- plot_combined_tc(df, gMSDCI, column_to_read, xaxis_label, yaxis_label, 'mean_sd_ci95', yaxis.min=yaxis.min, yaxis.max=yaxis.max)
+  ggsave(fileoutMSDCI, dpi=300, width=8, height=6)#, bg = "transparent")
+  
+  if(column_to_read %in% colnames(df_exp_dataset)) {
     # mean
-    fileoutM <- gsub('.png', '_mean.png', template_filename)
+    # we make this plot again because we want the line in front.
     gM <- ggplot()
-    gM <- plot_combined_tc(df, gM, readout, xaxis_label, yaxis_label, 'mean', yaxis.min=yaxis.min, yaxis.max=yaxis.max)
-    ggsave(fileoutM, dpi=300, width=8, height=6)#, bg = "transparent")
+    gM <- plot_raw_dataset(df_exp_dataset, gM, column_to_read, max(df$Time), alpha=exp_dataset_alpha)
+    gM <- plot_combined_tc(df, gM, column_to_read, xaxis_label, yaxis_label, 'mean', yaxis.min=yaxis.min, yaxis.max=yaxis.max)
+    ggsave(gsub('.pdf', '_w_exp_data.pdf', fileoutM), dpi=300, width=8, height=6)#, bg = "transparent")
     
     # mean_sd
-    fileoutMSD <- gsub('.png', '_mean_sd.png', template_filename)
     gMSD <- ggplot()
-    gMSD <- plot_combined_tc(df, gMSD, readout, xaxis_label, yaxis_label, 'mean_sd', yaxis.min=yaxis.min, yaxis.max=yaxis.max)
-    ggsave(fileoutMSD, dpi=300, width=8, height=6)#, bg = "transparent")
+    gMSD <- plot_raw_dataset(df_exp_dataset, gMSD, column_to_read, max(df$Time), alpha=exp_dataset_alpha)
+    gMSD <- plot_combined_tc(df, gMSD, column_to_read, xaxis_label, yaxis_label, 'mean_sd', alpha=0.6, yaxis.min=yaxis.min, yaxis.max=yaxis.max)
+    ggsave(gsub('.pdf', '_w_exp_data.pdf', fileoutMSD), dpi=300, width=8, height=6)#, bg = "transparent")
     
     # mean_sd_ci95
-    fileoutMSDCI <- gsub('.png', '_mean_sd_ci95.png', template_filename)
     gMSDCI <- ggplot()
-    gMSDCI <- plot_combined_tc(df, gMSDCI, readout, xaxis_label, yaxis_label, 'mean_sd_ci95', yaxis.min=yaxis.min, yaxis.max=yaxis.max)
-    ggsave(fileoutMSDCI, dpi=300, width=8, height=6)#, bg = "transparent")
-    
-    if(readout %in% colnames(df_exp_dataset)) {
-      # mean
-      # we make this plot again because we want the line in front.
-      gM <- ggplot()
-      gM <- plot_raw_dataset(df_exp_dataset, gM, readout, max(df$Time), alpha=exp_dataset_alpha)
-      gM <- plot_combined_tc(df, gM, readout, xaxis_label, yaxis_label, 'mean', yaxis.min=yaxis.min, yaxis.max=yaxis.max)
-      ggsave(gsub('.png', '_w_exp_data.png', fileoutM), dpi=300, width=8, height=6)#, bg = "transparent")
-      
-      # mean_sd
-      gMSD <- ggplot()
-      gMSD <- plot_raw_dataset(df_exp_dataset, gMSD, readout, max(df$Time), alpha=exp_dataset_alpha)
-      gMSD <- plot_combined_tc(df, gMSD, readout, xaxis_label, yaxis_label, 'mean_sd', alpha=0.6, yaxis.min=yaxis.min, yaxis.max=yaxis.max)
-      ggsave(gsub('.png', '_w_exp_data.png', fileoutMSD), dpi=300, width=8, height=6)#, bg = "transparent")
-      
-      # mean_sd_ci95
-      gMSDCI <- ggplot()
-      gMSDCI <- plot_raw_dataset(df_exp_dataset, gMSDCI, readout, max(df$Time), alpha=exp_dataset_alpha)
-      gMSDCI <- plot_combined_tc(df, gMSDCI, readout, xaxis_label, yaxis_label, 'mean_sd_ci95', alpha=0.6, yaxis.min=yaxis.min, yaxis.max=yaxis.max)
-      ggsave(gsub('.png', '_w_exp_data.png', fileoutMSDCI), dpi=300, width=8, height=6)#, bg = "transparent")
-    }
+    gMSDCI <- plot_raw_dataset(df_exp_dataset, gMSDCI, column_to_read, max(df$Time), alpha=exp_dataset_alpha)
+    gMSDCI <- plot_combined_tc(df, gMSDCI, column_to_read, xaxis_label, yaxis_label, 'mean_sd_ci95', alpha=0.6, yaxis.min=yaxis.min, yaxis.max=yaxis.max)
+    ggsave(gsub('.pdf', '_w_exp_data.pdf', fileoutMSDCI), dpi=300, width=8, height=6)#, bg = "transparent")
   }
+  
 }
 
 
@@ -366,91 +368,30 @@ plot_sep_sims <- function(inputdir, outputdir, model, exp_dataset, plot_exp_data
     dir.create(outputdir)
   }
   # collect all files in the directory
-  files <- list.files( path=inputdir, pattern=column_to_read)
-  print(files)
+  filein <- file.path(inputdir, paste0(model, "_", column_to_read, ".csv"))
+  fileout <- file.path(outputdir, gsub('.csv', '.pdf', basename(filein)))  
+  # print(filein)
   
   df_exp_dataset <- load_exp_dataset(exp_dataset, plot_exp_dataset)
   
-  for(i in 1:length(files)) {
-    df <- data.table::fread( file.path(inputdir, files[i]) )
-    # print(df)
-    readout <- gsub(paste(model, '_', sep=''), '', gsub('.csv', '', basename(files[i])))
-    fileout <- file.path(outputdir, gsub('.csv', '.png', basename(files[i])))
-    
-    g <- plot_repeated_tc(df, ggplot(), readout, xaxis_label, yaxis_label, yaxis.min=yaxis.min, yaxis.max=yaxis.max)
-    ggsave(fileout, dpi=300,  width=8, height=6)#, bg = "transparent")
-    
-    if(readout %in% colnames(df_exp_dataset)) {
-      g <- plot_raw_dataset(df_exp_dataset, g, readout, max(df$Time), alpha=exp_dataset_alpha, yaxis.min=yaxis.min, yaxis.max=yaxis.max)
-      g <- plot_repeated_tc(df, g, readout, xaxis_label, yaxis_label, alpha=0.2, yaxis.min=yaxis.min, yaxis.max=yaxis.max)
-      ggsave(gsub('.png', '_w_exp_data.png', fileout), dpi=300, width=8, height=6)#, bg = "transparent")
-    }
-    
-    g <- plot_heatmap_tc(df, ggplot(), TRUE, readout, xaxis_label, 'repeats')
-    ggsave(gsub('.png', '_heatmap_scaled.png', fileout), dpi=300,  width=8, height=6)#, bg = "transparent")
-    
-    g <- plot_heatmap_tc(df, ggplot(), FALSE, readout, xaxis_label, 'repeats')
-    ggsave(gsub('.png', '_heatmap.png', fileout), dpi=300,  width=8, height=6)#, bg = "transparent")
-    
+  df <- data.table::fread( filein )
+  # print(df)
+  
+  g <- plot_repeated_tc(df, ggplot(), column_to_read, xaxis_label, yaxis_label, yaxis.min=yaxis.min, yaxis.max=yaxis.max)
+  ggsave(fileout, dpi=300,  width=8, height=6)#, bg = "transparent")
+  
+  if(column_to_read %in% colnames(df_exp_dataset)) {
+    g <- plot_raw_dataset(df_exp_dataset, g, column_to_read, max(df$Time), alpha=exp_dataset_alpha, yaxis.min=yaxis.min, yaxis.max=yaxis.max)
+    g <- plot_repeated_tc(df, g, column_to_read, xaxis_label, yaxis_label, alpha=0.2, yaxis.min=yaxis.min, yaxis.max=yaxis.max)
+    ggsave(gsub('.pdf', '_w_exp_data.pdf', fileout), dpi=300, width=8, height=6)#, bg = "transparent")
   }
-}
-
-
-#' Summarise the model simulation repeats in a single file.
-#'
-#' @param inputdir the input directory containing the time course files
-#' @param model the model name
-#' @param outputfile the name of the file to store the simulations
-#' @param column_to_read the name of the column to process
-#' @examples
-#' data(insulin_receptor_1)
-#' data(insulin_receptor_2)
-#' data(insulin_receptor_3)
-#' dir.create(file.path("sim_datasets"))
-#' dir.create(file.path("sim_datasets_sum"))
-#' write.table(insulin_receptor_1, 
-#'             file=file.path("sim_datasets","insulin_receptor_1.csv"), 
-#'             row.names=FALSE)
-#' write.table(insulin_receptor_2, 
-#'             file=file.path("sim_datasets","insulin_receptor_2.csv"), 
-#'             row.names=FALSE)
-#' write.table(insulin_receptor_3, 
-#'             file=file.path("sim_datasets","insulin_receptor_3.csv"), 
-#'             row.names=FALSE)
-#' summarise_data(inputdir="sim_datasets", 
-#'                model="insulin_receptor", 
-#'                outputfile=file.path("sim_datasets_sum", 
-#'                                     "insulin_receptor_IR_beta_pY1146.csv"), 
-#'                column_to_read="IR_beta_pY1146")
-#' @export
-summarise_data <- function(inputdir, model, outputfile, column_to_read='X1') {
   
-  # collect all files in the directory
-  files <- list.files( path=inputdir, pattern=model )
-  #print(files)
+  g <- plot_heatmap_tc(df, ggplot(), TRUE, column_to_read, xaxis_label, 'repeats')
+  ggsave(gsub('.pdf', '_heatmap_scaled.pdf', fileout), dpi=300,  width=8, height=6)#, bg = "transparent")
   
-  # Read the simulated time course data sets
-  timecourses <- data.table::fread( file.path(inputdir, files[1]), select=c('Time', column_to_read))
-  column <- names (timecourses)
-  
-  timepoints <- timecourses$Time
-  #print(timepoints)
-  time_length <- length(timepoints)
-  
-  for(i in 1:length(column)){
-    if(column[i] != "Time") {
-      print(column[i])
-      summary <- NULL
-      cbind(summary, timepoints) -> summary
-      for(j in 1:length(files)) {
-        sim_file <- data.table::fread( file.path(inputdir, files[j]), select=c(column[i]))
-        summary <- cbind(summary, sim_file)
-      }
-      summary <- data.frame(summary)
-      names(summary) <- c("Time", paste('X', seq(1, length(files), 1), sep=""))
-      write.table(summary, file=outputfile, sep="\t", row.names=FALSE, quote=FALSE)
-    }
-  }
+  g <- plot_heatmap_tc(df, ggplot(), FALSE, column_to_read, xaxis_label, 'repeats')
+  ggsave(gsub('.pdf', '_heatmap.pdf', fileout), dpi=300,  width=8, height=6)#, bg = "transparent")
+    
 }
 
 
@@ -460,83 +401,31 @@ summarise_data <- function(inputdir, model, outputfile, column_to_read='X1') {
 #####################
 
 
-
-#' For each time point compute the most relevant descriptive statistics: mean, sd, var, skew, kurt, ci95, coeffvar, 
-#' min, 1st quantile, median, 3rd quantile, and max.
+#' Calculate the skewness of a numeric vector
 #'
-#' @param timepoint.values array of values for a certain time point
-#' @param nfiles the number of files (samples) 
-#' @return the statistics for the array of values for a specific time point
-compute_descriptive_statistics <- function(timepoint.values, nfiles) {
-	timepoint <- list("mean"=0,"sd"=0,"var"=0,"skew"=0,"kurt"=0,"ci95"=0,
-			  "coeffvar"=0,"min"=0,"stquantile"=0,"median"=0,"rdquantile"=0,"max"=0)
-    # compute mean, standard deviation, error, error.left, error.right
-    timepoint$mean <- mean(timepoint.values, na.rm = TRUE)
-    timepoint$sd <- sd(timepoint.values, na.rm = TRUE)
-    timepoint$var <- var(timepoint.values, na.rm = TRUE)
-    #y <- timepoint.values - timepoint.mean
-    timepoint$skew <- mean(timepoint.values^3, na.rm = TRUE)/mean(timepoint.values^2, na.rm = TRUE)^1.5
-    timepoint$kurt <- mean(timepoint.values^4, na.rm = TRUE)/mean(timepoint.values^2, na.rm = TRUE)^2 -3
-    # 0.95 confidence level 
-    #timepoint$ci95 <- qt(0.975, df=nfiles-1)*timepoint$sd/sqrt(nfiles)  # quantile t-distribution (few sample, stddev unknown exactly)
-    timepoint$ci95 <- qnorm(0.975)*timepoint$sd/sqrt(nfiles) # quantile normal distribution (lot of samples)
-    timepoint$coeffvar <- timepoint$sd / timepoint$mean
-    timepoint$min <- min(timepoint.values, na.rm = TRUE)
-    timepoint$stquantile <- quantile(timepoint.values, na.rm = TRUE)[2]  # Q1
-    timepoint$median <- median(timepoint.values, na.rm = TRUE)  # Q2 or quantile(timepoint.values)[3]
-    timepoint$rdquantile <- quantile(timepoint.values, na.rm = TRUE)[4]  # Q3
-    timepoint$max <- max(timepoint.values, na.rm = TRUE)
-
-    return (timepoint)
+#' @param x the numeric vector
+#' @param na.rm TRUE if NA values should be discarded
+#' @return the skewness
+#' @examples 
+#' skewness(x=c(1,2.4,5,NA), na.rm=TRUE)
+#' @export
+skewness <- function(x, na.rm=FALSE) {
+  if (na.rm) x = x[!is.na(x)]
+  return(sum((x-mean(x))^3/length(x))/sqrt(var(x))^3)
 }
 
 
-#' Return the column names of the statitics to calculate.
+#' Calculate the kurtosis of a numeric vector
 #'
-#' @param column.names an array of column names
-#' @param readout the name of the readout
-#' @return the column names including the readout name
-get_column_names_statistics <- function(column.names, readout) {    
-    column.names <- c (column.names,
-                       paste(readout, "_Mean", sep=""),
-                       paste(readout, "_StdDev", sep=""),
-                       paste(readout, "_Variance", sep=""),
-                       paste(readout, "_Skewness", sep=""),
-                       paste(readout, "_Kurtosis", sep=""),                       
-                       paste(readout, "_t-dist_CI95%", sep=""),
-                       paste(readout, "_StdErr", sep=""),
-                       paste(readout, "_CoeffVar", sep=""),
-                       paste(readout, "_Minimum", sep=""),
-                       paste(readout, "_1stQuantile", sep=""),
-                       paste(readout, "_Median", sep=""),
-                       paste(readout, "_3rdQuantile", sep=""),
-                       paste(readout, "_Maximum", sep=""))
-    #print(readout)
-    return (column.names)
-}
-
-
-#' Add the statistics for a readout to the table of statistics. The first column is Time.
-#'
-#' @param statistics the table of statistics to fill up
-#' @param readout the statistics for this readout.
-#' @param colidx the position in the table to put the readout statistics
-#' @return The table of statistics including this readout.
-get_stats <- function(statistics, readout, colidx=2) {
-    #print(readout$mean) 
-    statistics[,colidx]   <- readout$mean
-    statistics[,colidx+1] <- readout$sd
-    statistics[,colidx+2] <- readout$var
-    statistics[,colidx+3] <- readout$skew
-    statistics[,colidx+4] <- readout$kurt
-    statistics[,colidx+5] <- readout$ci95
-    statistics[,colidx+6] <- readout$coeffvar
-    statistics[,colidx+7] <- readout$min
-    statistics[,colidx+8] <- readout$stquantile
-    statistics[,colidx+9] <- readout$median
-    statistics[,colidx+10] <- readout$rdquantile
-    statistics[,colidx+11] <- readout$max
-    return (statistics)
+#' @param x the numeric vector
+#' @param na.rm TRUE if NA values should be discarded
+#' @return the kurtosis
+#' @examples 
+#' kurtosis(x=c(1,2.4,5,NA), na.rm=TRUE)
+#' @export
+kurtosis <- function(x, na.rm=FALSE) {
+  if (na.rm) x = x[!is.na(x)]
+  return(sum((x-mean(x))^4/length(x))/sqrt(var(x))^4)
 }
 
 

@@ -31,6 +31,7 @@ objval.col <- "ObjVal"
 #' @param allfits_filenamein the dataset containing all the parameter fits
 #' @param plots_dir the directory to save the generated plots.
 #' @param data_point_num the number of data points used for parameterise the model.
+#' @param fileout_param_estim_best_fits_details the name of the file for the statistics of the parameters best fits.
 #' @param fileout_param_estim_details the name of the file containing the detailed statistics for the estimated parameters.
 #' @param fileout_param_estim_summary the name of the file containing the summary for the parameter estimation.
 #' @param best_fits_percent the percent of best fits to analyse.
@@ -56,6 +57,8 @@ objval.col <- "ObjVal"
 #'            allfits_filenamein=file.path("pe_datasets", "all_fits.csv"), 
 #'            plots_dir="pe_plots", 
 #'            data_point_num=33, 
+#'            fileout_param_estim_best_fits_details=file.path("pe_datasets", 
+#'                                                  "param_estim_best_fits_details.csv"), 
 #'            fileout_param_estim_details=file.path("pe_datasets", 
 #'                                                  "param_estim_details.csv"), 
 #'            fileout_param_estim_summary=file.path("pe_datasets", 
@@ -73,6 +76,7 @@ sbpiper_pe <- function(model,
                        allfits_filenamein, 
                        plots_dir, 
                        data_point_num, 
+                       fileout_param_estim_best_fits_details="param_estim_best_fits_details.csv",
                        fileout_param_estim_details="param_estim_details.csv", 
                        fileout_param_estim_summary="param_estim_summary.csv", 
                        best_fits_percent=50, 
@@ -81,7 +85,7 @@ sbpiper_pe <- function(model,
                        plot_2d_99cl_corr=TRUE, 
                        logspace=TRUE, 
                        scientific_notation=TRUE) {
-  
+
   ### ------------ ###
   
   # Run some controls first
@@ -138,37 +142,45 @@ sbpiper_pe <- function(model,
   # objective value vs iterations analysis
   objval_vs_iters_analysis(model=model, filename=allfits_filenamein, plots_dir=plots_dir)
   
-  for(i in seq_along(param.names)) {
+  # PCA analysis
+  parameter_pca_analysis(model=model, filename=finalfits_filenamein, plots_dir=plots_dir, best_fits_percent=best_fits_percent)
+  lapply(param.names, function(param) {
     # PLE analysis
-    sampled_ple_analysis(model=model, filename=allfits_filenamein, parameter=param.names[i], 
+    sampled_ple_analysis(model=model, filename=allfits_filenamein, parameter=param, 
                          plots_dir=plots_dir, fileout_param_estim_summary=fileout_param_estim_summary, 
                          logspace=logspace, scientific_notation=scientific_notation)
     
     # parameter density analysis
-    parameter_density_analysis(model=model, filename=finalfits_filenamein, parameter=param.names[i], plots_dir=plots_dir, thres="BestFits", best_fits_percent=best_fits_percent, logspace=logspace, scientific_notation=scientific_notation)
-    parameter_density_analysis(model=model, filename=allfits_filenamein, parameter=param.names[i], plots_dir=plots_dir, thres="CL66", fileout_param_estim_summary=fileout_param_estim_summary, logspace=logspace, scientific_notation=scientific_notation)
-    parameter_density_analysis(model=model, filename=allfits_filenamein, parameter=param.names[i], plots_dir=plots_dir, thres="CL95", fileout_param_estim_summary=fileout_param_estim_summary, logspace=logspace, scientific_notation=scientific_notation)
-    parameter_density_analysis(model=model, filename=allfits_filenamein, parameter=param.names[i], plots_dir=plots_dir, thres="CL99", fileout_param_estim_summary=fileout_param_estim_summary, logspace=logspace, scientific_notation=scientific_notation)
-    # parameter_density_analysis(model=model, filename=allfits_filenamein, parameter=param.names[i], plots_dir=plots_dir, thres="All", fileout_param_estim_summary=fileout_param_estim_summary, logspace=logspace, scientific_notation=scientific_notation)
-  }
+    parameter_density_analysis(model=model, filename=finalfits_filenamein, parameter=param, plots_dir=plots_dir, thres="BestFits", best_fits_percent=best_fits_percent, logspace=logspace, scientific_notation=scientific_notation)
+    parameter_density_analysis(model=model, filename=allfits_filenamein, parameter=param, plots_dir=plots_dir, thres="CL66", fileout_param_estim_summary=fileout_param_estim_summary, logspace=logspace, scientific_notation=scientific_notation)
+    parameter_density_analysis(model=model, filename=allfits_filenamein, parameter=param, plots_dir=plots_dir, thres="CL95", fileout_param_estim_summary=fileout_param_estim_summary, logspace=logspace, scientific_notation=scientific_notation)
+    parameter_density_analysis(model=model, filename=allfits_filenamein, parameter=param, plots_dir=plots_dir, thres="CL99", fileout_param_estim_summary=fileout_param_estim_summary, logspace=logspace, scientific_notation=scientific_notation)
+    # parameter_density_analysis(model=model, filename=allfits_filenamein, parameter=param, plots_dir=plots_dir, thres="All", fileout_param_estim_summary=fileout_param_estim_summary, logspace=logspace, scientific_notation=scientific_notation) 
+  })
+
+  # create summary file containing parameter best fits stats
+  combine_param_best_fits_stats(plots_dir=plots_dir, fileout_param_estim_best_fits_details=fileout_param_estim_best_fits_details)
   
   # create summary file containing parameter PLE stats
   combine_param_ple_stats(plots_dir=plots_dir, fileout_param_estim_details=fileout_param_estim_details)
   
   # 2D PLE analysis
-  for(i in 1:(length(param.names)-1)) {
-    for(j in (i+1):length(param.names)) {
-      sampled_2d_ple_analysis(model=model, filename=finalfits_filenamein, parameter1=param.names[i], parameter2=param.names[j], plots_dir=plots_dir, thres="BestFits", best_fits_percent=best_fits_percent, logspace=logspace, scientific_notation=scientific_notation)
+  # create all the combinations we need. This will be a matrix(length(param.names) x 2), where each column is 
+  # a pair.
+  if(length(param.names) >= 2) {
+    ind <- combn(length(param.names), 2)
+    apply(ind, 2, function(x) {
+      sampled_2d_ple_analysis(model=model, filename=finalfits_filenamein, parameter1=param.names[x[1]], parameter2=param.names[x[2]], plots_dir=plots_dir, thres="BestFits", best_fits_percent=best_fits_percent, logspace=logspace, scientific_notation=scientific_notation)
       if(plot_2d_66cl_corr) 
-        sampled_2d_ple_analysis(model=model, filename=allfits_filenamein, parameter1=param.names[i], parameter2=param.names[j], plots_dir=plots_dir, thres="CL66", fileout_param_estim_summary=fileout_param_estim_summary, logspace=logspace, scientific_notation=scientific_notation)
+        sampled_2d_ple_analysis(model=model, filename=allfits_filenamein, parameter1=param.names[x[1]], parameter2=param.names[x[2]], plots_dir=plots_dir, thres="CL66", fileout_param_estim_summary=fileout_param_estim_summary, logspace=logspace, scientific_notation=scientific_notation)
       if(plot_2d_95cl_corr)
-        sampled_2d_ple_analysis(model=model, filename=allfits_filenamein, parameter1=param.names[i], parameter2=param.names[j], plots_dir=plots_dir, thres="CL95", fileout_param_estim_summary=fileout_param_estim_summary, logspace=logspace, scientific_notation=scientific_notation)
+        sampled_2d_ple_analysis(model=model, filename=allfits_filenamein, parameter1=param.names[x[1]], parameter2=param.names[x[2]], plots_dir=plots_dir, thres="CL95", fileout_param_estim_summary=fileout_param_estim_summary, logspace=logspace, scientific_notation=scientific_notation)
       if(plot_2d_99cl_corr)
-        sampled_2d_ple_analysis(model=model, filename=allfits_filenamein, parameter1=param.names[i], parameter2=param.names[j], plots_dir=plots_dir, thres="CL99", fileout_param_estim_summary=fileout_param_estim_summary, logspace=logspace, scientific_notation=scientific_notation)
-      # sampled_2d_ple_analysis(model=model, filename=allfits_filenamein, parameter1=param.names[i], parameter2=param.names[j], plots_dir=plots_dir, thres="All", fileout_param_estim_summary=fileout_param_estim_summary, logspace=logspace, scientific_notation=scientific_notation)
-    }
+        sampled_2d_ple_analysis(model=model, filename=allfits_filenamein, parameter1=param.names[x[1]], parameter2=param.names[x[2]], plots_dir=plots_dir, thres="CL99", fileout_param_estim_summary=fileout_param_estim_summary, logspace=logspace, scientific_notation=scientific_notation)
+      # sampled_2d_ple_analysis(model=model, filename=allfits_filenamein, parameter1=param.names[x[1]], parameter2=param.names[x[2]], plots_dir=plots_dir, thres="All", fileout_param_estim_summary=fileout_param_estim_summary, logspace=logspace, scientific_notation=scientific_notation)    
+    })
   }
-  
+  return()
 }
 
 
@@ -312,25 +324,22 @@ pe_ds_preproc <- function(filename, param.names=c(), logspace=TRUE, all.fits=FAL
     cl66_objval <- compute_cl_objval(objval.min, param.num, data_point_num, 0.33)
     
     # Write global statistics for the parameter estimation, including the confidence levels
-    fileoutPLE <- sink(fileout_param_estim_summary)
-    cat(paste("MinObjVal", 
-              "AIC", 
-              "AICc", 
-              "BIC", 
-              "ParamNum", "DataPointNum", 
-              "CL66ObjVal", "CL66FitsNum", 
-              "CL95ObjVal", "CL95FitsNum", 
-              "CL99ObjVal", "CL99FitsNum\n", sep="\t"))
-    cat(paste(objval.min, 
-              compute_aic(objval.min, param.num), 
-              compute_aicc(objval.min, param.num, data_point_num), 
-              compute_bic(objval.min, param.num, data_point_num), 
-              param.num, data_point_num, 
-              cl66_objval, sum(dt[,objval.col, with=F] <= cl66_objval), 
-              cl95_objval, sum(dt[,objval.col, with=F] <= cl95_objval), 
-              cl99_objval, sum(dt[,objval.col, with=F] <= cl99_objval), sep="\t"), append=TRUE)
-    cat("\n", append=TRUE)
-    sink()
+    df.stats <- data.frame(MinObjVal=objval.min, 
+                           AIC=compute_aic(objval.min, param.num), 
+                           AICc=compute_aicc(objval.min, param.num, data_point_num), 
+                           BIC=compute_bic(objval.min, param.num, data_point_num), 
+                           ParamNum=param.num, 
+                           DataPointNum=data_point_num, 
+                           CL66ObjVal=cl66_objval, 
+                           CL66FitsNum=sum(dt[,objval.col, with=F] <= cl66_objval), 
+                           CL95ObjVal=cl95_objval, 
+                           CL95FitsNum=sum(dt[,objval.col, with=F] <= cl95_objval), 
+                           CL99ObjVal=cl99_objval, 
+                           CL99FitsNum=sum(dt[,objval.col, with=F] <= cl99_objval))
+    write.table(df.stats,
+                file=fileout_param_estim_summary,
+                row.names=FALSE,
+                sep="\t")
   }
 }
 
@@ -381,7 +390,7 @@ plot_sampled_ple <- function(df99, cl66_objval, cl95_objval, cl99_objval, plots_
   parameter <- colnames(df99)[2]
   
   print(paste('sampled PLE for', parameter))
-  fileout <- file.path(plots_dir, paste(model, "_approx_ple_", parameter, ".png", sep=""))
+  fileout <- file.path(plots_dir, paste(model, "_approx_ple_", parameter, ".pdf", sep=""))
   
   theme_set(basic_theme(36))
   g <- scatterplot_ple(df99, ggplot(), parameter, objval.col, cl66_objval, cl95_objval, cl99_objval) +
@@ -397,7 +406,7 @@ plot_sampled_ple <- function(df99, cl66_objval, cl95_objval, cl99_objval, plots_
   
   # Add density information (removed as it was not showing much more..)
   #g <- g + stat_density2d(color="green")
-  #fileout = gsub('.png', '_density.png', fileout)
+  #fileout = gsub('.pdf', '_density.pdf', fileout)
   #ggsave(fileout, dpi=300, width=8, height=6)
 }
 
@@ -606,18 +615,24 @@ sampled_ple_analysis <- function(model,
   ci_obj <- compute_sampled_ple_stats(df, dt.stats$MinObjVal, dt.stats$CL66ObjVal, dt.stats$CL95ObjVal, dt.stats$CL99ObjVal,logspace)
   
   # Save the sampled profile likelihood estimations (PLE) statistics
-  fileoutPLE <- sink(file.path(plots_dir, paste0(model, "_approx_ple_", parameter,".csv")))
-  cat(paste("Parameter", "Value", "LeftCI66", "RightCI66", "LeftCI95", "RightCI95", "LeftCI99", "RightCI99", 
-            "Value_LeftCI66_ratio", "RightCI66_Value_ratio", "Value_LeftCI95_ratio", "RightCI95_Value_ratio", "Value_LeftCI99_ratio", "RightCI99_Value_ratio\n", sep="\t"), append=TRUE)
-  
-  # write on file
-  cat(paste(parameter, ci_obj$par_value, ci_obj$min_ci_66, ci_obj$max_ci_66, ci_obj$min_ci_95, ci_obj$max_ci_95,
-            ci_obj$min_ci_99, ci_obj$max_ci_99, ci_obj$min_ci_66_par_value_ratio, ci_obj$max_ci_66_par_value_ratio,
-            ci_obj$min_ci_95_par_value_ratio, ci_obj$max_ci_95_par_value_ratio, ci_obj$min_ci_99_par_value_ratio,
-            ci_obj$max_ci_99_par_value_ratio, sep="\t"), append=TRUE)
-  cat("\n", append=TRUE)
-  sink()
-  
+  df.ple.stats <- data.frame(Parameter=parameter, 
+                             Value=ci_obj$par_value, 
+                             LeftCI66=ci_obj$min_ci_66, 
+                             RightCI66=ci_obj$max_ci_66, 
+                             LeftCI95=ci_obj$min_ci_95, 
+                             RightCI95=ci_obj$max_ci_95, 
+                             LeftCI99=ci_obj$min_ci_99, 
+                             RightCI99=ci_obj$max_ci_99, 
+                             Value_LeftCI66_ratio=ci_obj$min_ci_66_par_value_ratio, 
+                             RightCI66_Value_ratio=ci_obj$max_ci_66_par_value_ratio, 
+                             Value_LeftCI95_ratio=ci_obj$min_ci_95_par_value_ratio, 
+                             RightCI95_Value_ratio=ci_obj$max_ci_95_par_value_ratio, 
+                             Value_LeftCI99_ratio=ci_obj$min_ci_99_par_value_ratio, 
+                             RightCI99_Value_ratio=ci_obj$max_ci_99_par_value_ratio)
+  write.table(df.ple.stats,
+              file=file.path(plots_dir, paste0(model, "_approx_ple_", parameter,".csv")),
+              row.names=FALSE,
+              sep="\t")
 }
 
 
@@ -634,7 +649,7 @@ sampled_ple_analysis <- function(model,
 #' data(insulin_receptor_all_fits)
 #' colnames(insulin_receptor_all_fits)[1] <- "ObjVal"
 #' insulin_receptor_all_fits[,2:4] <- log10(insulin_receptor_all_fits[,2:4])
-#' fileout <- file.path("pe_plots", "dens_k1.png")
+#' fileout <- file.path("pe_plots", "dens_k1.pdf")
 #' plot_parameter_density(df=insulin_receptor_all_fits, 
 #'                        parameter="k1", 
 #'                        fileout=fileout) 
@@ -724,19 +739,19 @@ parameter_density_analysis <- function(model,
     if(dt.stats$CL99ObjVal != 0) {
       if(thres == "CL66") {
         df <- df[df[ , objval.col] <= dt.stats$CL66ObjVal, ]
-        fileout <- file.path(plots_dir, paste(model, "_cl66_fits_", parameter, ".png", sep=""))
+        fileout <- file.path(plots_dir, paste(model, "_cl66_fits_", parameter, ".pdf", sep=""))
         title <- expression("fits"<="CL66%")
       } else if(thres == "CL95") {
         df <- df[df[ , objval.col] <= dt.stats$CL95ObjVal, ]
-        fileout <- file.path(plots_dir, paste(model, "_cl95_fits_", parameter, ".png", sep=""))
+        fileout <- file.path(plots_dir, paste(model, "_cl95_fits_", parameter, ".pdf", sep=""))
         title <- expression("fits"<="CL95%")
       } else if(thres == "CL99") {
         df <- df[df[ , objval.col] <= dt.stats$CL99ObjVal, ]
-        fileout <- file.path(plots_dir, paste(model, "_cl99_fits_", parameter, ".png", sep=""))
+        fileout <- file.path(plots_dir, paste(model, "_cl99_fits_", parameter, ".pdf", sep=""))
         title <- expression("fits"<="CL99%")
       } else if(thres == "All") {
         # no filtering, but we assume that filename contains all the fits
-        fileout <- file.path(plots_dir, paste(model, "_all_fits_", parameter, ".png", sep=""))
+        fileout <- file.path(plots_dir, paste(model, "_all_fits_", parameter, ".pdf", sep=""))
         title <- expression("all fits")
       } else {
         warning("thres should be one of : BestFits, CL66, CL95, CL99, All.")
@@ -755,8 +770,24 @@ parameter_density_analysis <- function(model,
     df <- df[order(-df[,objval.col]),]
     df <- tail(df, selected_rows)
     
-    fileout <- file.path(plots_dir, paste(model, "_best_fits_", parameter, ".png", sep=""))
+    fileout <- file.path(plots_dir, paste(model, "_best_fits_", parameter, ".pdf", sep=""))
     title <- expression("best fits")
+    
+    # Save basic statistics for the parameter based on the best fits data set
+    if(logspace) {
+      param.values <- 10^df[,2]
+    } else {
+      param.values <- df[,2]
+    }
+    df.stats <- data.frame(Parameter=parameter,
+                           mean=mean(param.values),
+                           sd=sd(param.values),
+                           median=median(param.values),
+                           mad=mad(param.values))
+    write.table(df.stats, 
+                file=file.path(plots_dir, paste0(model, "_best_fits_", parameter,".csv")),
+                row.names=FALSE,
+                sep="\t")
   }
   
   print(paste('density analysis for', parameter, '(', thres, ')'))
@@ -778,7 +809,7 @@ parameter_density_analysis <- function(model,
 #' data(insulin_receptor_all_fits)
 #' colnames(insulin_receptor_all_fits)[1] <- "ObjVal"
 #' insulin_receptor_all_fits[,2:4] <- log10(insulin_receptor_all_fits[,2:4])
-#' fileout <- file.path("pe_plots", "2d_ple_k1_k2.png")
+#' fileout <- file.path("pe_plots", "2d_ple_k1_k2.pdf")
 #' plot_sampled_2d_ple(df=insulin_receptor_all_fits, 
 #'                     parameter1="k1", 
 #'                     parameter2="k2", 
@@ -879,19 +910,19 @@ sampled_2d_ple_analysis <- function(model, filename,
     if(dt.stats$CL99ObjVal != 0) {
       if(thres == "CL66") {
         df <- df[df[ , objval.col] <= dt.stats$CL66ObjVal, ]
-        fileout <- file.path(plots_dir, paste(model, "_ple_2d_cl66_fits_", parameter1, "_", parameter2, ".png", sep=""))
+        fileout <- file.path(plots_dir, paste(model, "_ple_2d_cl66_fits_", parameter1, "_", parameter2, ".pdf", sep=""))
         title <- expression("fits"<="CL66%")
       } else if(thres == "CL95") {
         df <- df[df[ , objval.col] <= dt.stats$CL95ObjVal, ]
-        fileout <- file.path(plots_dir, paste(model, "_ple_2d_cl95_fits_", parameter1, "_", parameter2, ".png", sep=""))
+        fileout <- file.path(plots_dir, paste(model, "_ple_2d_cl95_fits_", parameter1, "_", parameter2, ".pdf", sep=""))
         title <- expression("fits"<="CL95%")
       } else if(thres == "CL99") {
         df <- df[df[ , objval.col] <= dt.stats$CL99ObjVal, ]
-        fileout <- file.path(plots_dir, paste(model, "_ple_2d_cl99_fits_", parameter1, "_", parameter2, ".png", sep=""))
+        fileout <- file.path(plots_dir, paste(model, "_ple_2d_cl99_fits_", parameter1, "_", parameter2, ".pdf", sep=""))
         title <- expression("fits"<="CL99%")
       } else if(thres == "All") {
         # no filtering, but we assume that filename contains all the fits
-        fileout <- file.path(plots_dir, paste(model, "_ple_2d_all_fits_", parameter1, "_", parameter2, ".png", sep=""))
+        fileout <- file.path(plots_dir, paste(model, "_ple_2d_all_fits_", parameter1, "_", parameter2, ".pdf", sep=""))
         title <- expression("all fits")
       } else {
         warning("thres should be one of : BestFits, CL66, CL95, CL99, All.")
@@ -910,7 +941,7 @@ sampled_2d_ple_analysis <- function(model, filename,
     df <- df[order(-df[,objval.col]),]
     df <- tail(df, selected_rows)
     
-    fileout <- file.path(plots_dir, paste(model, "_ple_2d_best_fits_", parameter1, "_", parameter2, ".png", sep=""))
+    fileout <- file.path(plots_dir, paste(model, "_ple_2d_best_fits_", parameter1, "_", parameter2, ".pdf", sep=""))
     title <- expression("best fits")
   }
   
@@ -933,7 +964,7 @@ sampled_2d_ple_analysis <- function(model, filename,
 plot_objval_vs_iters <- function(objval.vec, model, plots_dir) {
   theme_set(basic_theme(36))
   g <- plot_fits(objval.vec, ggplot())
-  ggsave(file.path(plots_dir, paste(model, "_objval_vs_iter.png", sep="")), dpi=300, width=8, height=6)
+  ggsave(file.path(plots_dir, paste(model, "_objval_vs_iter.pdf", sep="")), dpi=300, width=8, height=6)
 }
 
 
@@ -958,6 +989,201 @@ objval_vs_iters_analysis <- function(model, filename, plots_dir) {
   dt <- data.table::fread(filename, select=c(objval.col))
   print('plotting objective value vs iteration')
   plot_objval_vs_iters(unlist(c(dt)), model, plots_dir)
+}
+
+
+#' Combine the parameter PLE statistics. 
+#'
+#' @param plots_dir the directory to save the generated plots
+#' @param fileout_param_estim_details the name of the file containing the detailed statistics for the estimated parameters
+#' @export
+combine_param_ple_stats <- function(plots_dir, fileout_param_estim_details) {
+  
+  files <- list.files(plots_dir, pattern="_approx_ple_.*csv$")
+  if(length(files) < 0) { return }
+  
+  for(i in 1:length(files)) {
+    if(i==1) {
+      df <- read.table(file.path(plots_dir, files[1]), header=TRUE, sep="\t")
+    } else {
+      df <- rbind(df, read.table(file.path(plots_dir, files[i]), header=TRUE, sep="\t"))
+    }
+  }
+  write.table(df, file=fileout_param_estim_details, sep="\t", row.names=FALSE)
+}
+
+
+#' Combine the parameter best fits statistics. 
+#'
+#' @param plots_dir the directory to save the generated plots
+#' @param fileout_param_estim_best_fits_details the name of the file containing the statistics for the parameter best fits.
+#' @export
+combine_param_best_fits_stats <- function(plots_dir, fileout_param_estim_best_fits_details) {
+  
+  files <- list.files(plots_dir, pattern="_best_fits_.*csv$")
+  if(length(files) < 0) { return }
+  
+  for(i in 1:length(files)) {
+    if(i==1) {
+      df <- read.table(file.path(plots_dir, files[1]), header=TRUE, sep="\t")
+    } else {
+      df <- rbind(df, read.table(file.path(plots_dir, files[i]), header=TRUE, sep="\t"))
+    }
+  }
+  
+  write.table(df, file=fileout_param_estim_best_fits_details, sep="\t", row.names=FALSE)
+}
+
+
+#' PCA for the parameters. These plots rely on factoextra fviz functions.
+#'
+#' @param model the model name
+#' @param filename the filename containing the fits sequence
+#' @param plots_dir the directory to save the generated plots
+#' @param best_fits_percent the percent of best fits to analyse.
+#' @param label.ind parameter `label` passed to factoextra::fviz_pca_ind(). Labels shown if <= 75 and select.ind is NULL.
+#' @param select.ind parameter `select.ind` passed to factoextra::fviz_pca_ind().
+#' @param repel.ind parameter `repel` passed to factoextra::fviz_pca_ind()
+#' @param label.var parameter `label` passed to factoextra::fviz_pca_var().
+#' @param select.var parameter `select.var` passed to factoextra::fviz_pca_var().
+#' @param repel.var parameter `repel` passed to factoextra::fviz_pca_var() 
+#' dir.create(file.path("pe_datasets"))
+#' dir.create(file.path("pe_plots"))
+#' data(insulin_receptor_best_fits)
+#' write.table(insulin_receptor_best_fits,
+#'             file=file.path("pe_datasets", "best_fits.csv"),
+#'             row.names=FALSE)
+#' # generate the global statistics for the parameter estimation
+#' pe_ds_preproc(filename=file.path("pe_datasets", "best_fits.csv"),
+#'               param.names=c('k1', 'k2', 'k3'),
+#'               logspace=TRUE,
+#'               all.fits=FALSE)
+#' parameter_pca_analysis(model="ir_beta",
+#'                        filename=file.path("pe_datasets", "best_fits_log10.csv"),
+#'                        plots_dir="pe_plots",
+#'                        best_fits_percent=50)
+#' @export
+parameter_pca_analysis <- function(model, 
+                                   filename, 
+                                   plots_dir, 
+                                   best_fits_percent=50,
+                                   label.ind = "all",
+                                   select.ind = NULL,
+                                   repel.ind = TRUE,
+                                   label.var = "all",
+                                   select.var = NULL,
+                                   repel.var = TRUE) {
+
+  # extract the best parameter values
+  df <- as.data.frame(data.table::fread(filename))
+
+  if(ncol(df) <= 3) {
+    warning("PCA analysis requires more than 1 parameter")
+    return()
+  }
+  
+  # df filtering
+  if(best_fits_percent <= 0.0 || best_fits_percent > 100.0) {
+    warning("best_fits_percent is not in (0, 100]. Now set to 50")
+    best_fits_percent = 50
+  }
+  # Calculate the number of rows to extract.
+  selected_rows <- (nrow(df)*best_fits_percent/100)
+  # sort by descending objective value so that the low objective values
+  # (which are the most important) are on top. Then extract the tail from the data frame.
+  df <- df[order(-df[,objval.col]),]
+  df <- tail(df, selected_rows)
+
+  # remove the first two columns as these are not used for the PCA
+  df <- df[-c(1,2)]
+    
+  print('PCA analysis')
+
+  # Compute PCA
+  #pca <- prcomp(df, center=TRUE, scale.=TRUE)
+  #write.csv(pca$loadings, file=paste0(gsub('.csv', '', filename),"_PCA_loadings.csv"), quote=FALSE)
+  
+  pca <- FactoMineR::PCA(df, scale.unit=TRUE, graph=FALSE)
+  
+  # Write the PCA individuals (repeats)
+  write.csv(pca$ind$coord, file=paste0(gsub('.csv', '', filename),"_PCA_individuals_coord.csv"), quote=FALSE)
+  # Write the PCA variables (vars)
+  write.csv(pca$var$coord, file=paste0(gsub('.csv', '', filename),"_PCA_variables_coord.csv"), quote=FALSE)  
+  # Write the eigenvalues
+  write.csv(pca$eig, file=paste0(gsub('.csv', '', filename),"_PCA_eigenvalues.csv"), quote=FALSE)
+
+  # Visualize eigenvalues (scree plot). Show the percentage of variances explained by each principal component.
+  factoextra::fviz_eig(pca) + labs(y="Variance (%)") + pca_theme(36)
+  ggsave(file.path(plots_dir, paste0(model, "_eigenvalues.pdf")), dpi=300, width=8, height=6)
+  
+  # only plots the labels if the individuals are not too many.
+  if(is.null(select.ind) && nrow(pca$ind$coord) > 75) {
+    label.ind = "none"
+    repel.ind = FALSE
+  }
+
+  # PCA plots by components
+
+  ndims <- ncol(pca$var$coord)
+  if(ndims >= 2) {
+    
+    for(i in 1:ndims) {
+      # Contributions of variables to PCi
+      factoextra::fviz_contrib(pca, choice="var", axes=i) + 
+        labs(title=paste0("PC", as.character(i))) +
+        pca_theme(36)
+      ggsave(file.path(plots_dir, paste0(model, "_contrib_var_PC", as.character(i),".pdf")), dpi=300, width=8, height=6)
+    }    
+    
+    # create all the combinations we need. This will be a matrix(length(param.names) x 2), where each column is 
+    # a pair.
+    ind <- combn(ndims, 2)
+    apply(ind, 2, function(x) {
+  
+      print(paste0('PC components : PC', as.character(x[1]), ' vs PC', as.character(x[2])))
+      # Graph of individuals. Individuals with a similar profile are grouped together.
+      factoextra::fviz_pca_ind(pca,
+                               axes=c(x[1],x[2]),
+                               col.ind = "contrib", # Color by contributions to the individuals
+                               gradient.cols = c("blue", "red"),
+                               label = label.ind,
+                               select.ind = select.ind,
+                               repel = repel.ind     # Avoid text overlapping
+      ) +
+        labs(title="PCA - indiv") +
+        pca_theme(36)
+      ggsave(file.path(plots_dir, paste0(model, "_individuals_PC", as.character(x[1]), "_PC", as.character(x[2]),".pdf")), dpi=300, width=8, height=6)
+      
+      # Graph of variables. Positive correlated variables point to the same side of the plot.
+      # Negative correlated variables point to opposite sides of the graph.
+      factoextra::fviz_pca_var(pca,
+                               axes=c(x[1],x[2]),
+                               col.var = "contrib", # Color by contributions to the PC
+                               gradient.cols = c("blue", "red"),
+                               label = label.var,
+                               select.var = select.var,
+                               repel = repel.var     # Avoid text overlapping
+      ) + 
+        labs(title="PCA - vars") +
+        pca_theme(36)
+      ggsave(file.path(plots_dir, paste0(model, "_variables_PC", as.character(x[1]), "_PC", as.character(x[2]),".pdf")), dpi=300, width=8, height=6)
+      
+      # Biplot of individuals and variables
+      factoextra::fviz_pca_biplot(pca,
+                                  axes=c(x[1],x[2]),
+                                  label = "var", 
+                                  repel = repel.var,
+                                  col.var = "#2E9FDF", # Variables color
+                                  col.ind = "#696969"  # Individuals color
+      ) + 
+        labs(title="PCA - biplot") +
+        pca_theme(36)
+      ggsave(file.path(plots_dir, paste0(model, "_biplot_PC", as.character(x[1]), "_PC", as.character(x[2]),".pdf")), dpi=300, width=8, height=6)
+      
+  
+    })
+  }
+  return()
 }
 
 
@@ -1001,23 +1227,3 @@ replace_colnames <- function(df.cols) {
   return(df.cols)
 }
 
-
-#' Combine the statistics for the parameter estimation details
-#'
-#' @param plots_dir the directory to save the generated plots
-#' @param fileout_param_estim_details the name of the file containing the detailed statistics for the estimated parameters
-combine_param_ple_stats <- function(plots_dir, fileout_param_estim_details) {
-  
-  files <- list.files(plots_dir, pattern="\\.csv$")
-  if(length(files) < 0) { return }
-  
-  for(i in 1:length(files)) {
-    if(i==1) {
-      dt <- data.table::fread(file.path(plots_dir, files[1])) 
-    } else {
-      dt <- rbind(dt, data.table::fread(file.path(plots_dir, files[i])))
-    }
-  }
-  
-  data.table::fwrite(dt, fileout_param_estim_details)
-}
