@@ -1,10 +1,9 @@
 Package: sbpiper
-Version: 1.6.0
-Date: 2018-03-21
+Version: 1.7.0
+Date: 2018-04-20
 Title: Data Analysis Functions for 'SBpipe' Package
 Authors@R: c(
-    person("Piero", "Dalle Pezze", email = "piero.dallepezze@gmail.com", role = c("aut", "cre", "cph"), comment = c(ORCID = "0000-0003-1695-6763")),
-    person("Nicolas", "Le Novère", email = "nicolas.lenovere@babraham.ac.uk", role = c("cph"), comment = c(ORCID = "0000-0002-6309-7327"))
+    person("Piero", "Dalle Pezze", email = "piero.dallepezze@gmail.com", role = c("aut", "cre", "cph"), comment = c(ORCID = "0000-0003-1695-6763"))
     )
 Depends: R (>= 3.2.0)
 Imports: colorRamps, data.table, factoextra, FactoMineR, ggplot2 (>=
@@ -31,10 +30,9 @@ Collate: 'sbpiper.r' 'sbpiper_ggplot2_themes.r' 'sbpiper_plots.r'
 RoxygenNote: 6.0.1
 Encoding: UTF-8
 NeedsCompilation: no
-Packaged: 2018-03-21 14:10:46 UTC; dallepep
+Packaged: 2018-04-20 11:17:03 UTC; dallepep
 Author: Piero Dalle Pezze [aut, cre, cph]
-    (<https://orcid.org/0000-0003-1695-6763>),
-  Nicolas Le Novère [cph] (<https://orcid.org/0000-0002-6309-7327>)
+    (<https://orcid.org/0000-0003-1695-6763>)
 Maintainer: Piero Dalle Pezze <piero.dallepezze@gmail.com>
 Repository: CRAN
-Date/Publication: 2018-03-22 08:32:53 UTC
+Date/Publication: 2018-04-20 11:04:03 UTC
